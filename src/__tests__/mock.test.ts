@@ -18,5 +18,12 @@ describe('Mock Wellness Response', () => {
     expect(mock).toHaveProperty('companionResponse');
     expect(mock.companionResponse).toHaveProperty('message');
     expect(mock.companionResponse).toHaveProperty('followUpQuestion');
+    expect(mock).toHaveProperty('patternExplanation');
+    expect(mock).toHaveProperty('studyRecoveryPlan');
+    expect(mock.studyRecoveryPlan).toHaveProperty('next30Minutes');
+    expect(mock).toHaveProperty('panicModePlan');
+    expect(mock.panicModePlan).toHaveProperty('title');
+    expect(mock.panicModePlan.steps.length).toBeGreaterThan(0);
+    expect(mock).toHaveProperty('guardianSafeSummary');
   });
 });

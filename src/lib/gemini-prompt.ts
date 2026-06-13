@@ -14,6 +14,7 @@ CRITICAL SAFETY RULES:
 6. If the student is severely overwhelmed but not in immediate physical danger, set "riskLevel": "high".
 7. Values must be in the user's preferred language: ${checkIn.language}.
 8. JSON keys MUST stay in English.
+9. For guardianSafeSummary: provide a high-level, non-diagnostic summary of the student's stress levels and well-being. NEVER include raw journal text, private details, or diagnoses. Use careful language.
 
 Check-in Data:
 - Exam Type: ${checkIn.examType}
@@ -34,6 +35,7 @@ Output strict JSON only, matching exactly this structure, with no markdown forma
   "guardianAlertRecommended": boolean,
   "stressTriggers": ["trigger 1", "trigger 2"],
   "emotionalPatterns": ["pattern 1", "pattern 2"],
+  "patternExplanation": "explanation of why these emotional patterns were identified",
   "selfDoubtSignals": ["signal 1"],
   "burnoutSignals": ["signal 1"],
   "copingStrategies": [
@@ -56,7 +58,23 @@ Output strict JSON only, matching exactly this structure, with no markdown forma
     "followUpQuestion": "one gentle follow-up question"
   },
   "nextSmallAction": "one small action student can take now",
-  "safetyNote": "general wellness support note"
+  "safetyNote": "general wellness support note",
+  "studyRecoveryPlan": {
+    "next30Minutes": "action for next 30 mins",
+    "tonight": "action for tonight",
+    "tomorrowMorning": "action for tomorrow morning",
+    "whatToAvoid": "what to avoid doing",
+    "askForHelpWith": "what to ask for help with"
+  },
+  "panicModePlan": {
+    "title": "Immediate Reset Plan",
+    "durationMinutes": 5,
+    "steps": ["step 1", "step 2"],
+    "groundingPrompt": "grounding prompt to anchor the student",
+    "nextTinyAction": "one tiny action to take next",
+    "companionMessage": "empathetic companion message"
+  },
+  "guardianSafeSummary": "safe summary for guardian"
 }
 `;
 }

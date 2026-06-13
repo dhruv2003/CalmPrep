@@ -42,6 +42,23 @@ describe('Wellness Response Validation', () => {
         message: 'You are doing great',
         followUpQuestion: 'How are you feeling now?',
       },
+      patternExplanation: 'Explanation',
+      studyRecoveryPlan: {
+        next30Minutes: 'Rest',
+        tonight: 'Rest',
+        tomorrowMorning: 'Rest',
+        whatToAvoid: 'Stress',
+        askForHelpWith: 'Nothing',
+      },
+      panicModePlan: {
+        title: 'Plan',
+        durationMinutes: 5,
+        steps: ['Breathe'],
+        groundingPrompt: 'Ground',
+        nextTinyAction: 'Act',
+        companionMessage: 'Message',
+      },
+      guardianSafeSummary: 'Summary',
     };
     const result = wellnessResponseSchema.safeParse(minimal);
     expect(result.success).toBe(true);

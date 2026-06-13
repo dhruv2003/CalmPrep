@@ -7,31 +7,70 @@ import { useLanguage } from '@/components/LanguageProvider';
 import { Navigation } from '@/components/Navigation';
 import { CheckIn } from '@/lib/types';
 import { getCheckIns } from '@/lib/firebase/firestore';
-import { ShieldAlert, Lightbulb, TrendingUp, Music, PlayCircle, Download, Sparkles } from 'lucide-react';
-import { AlertTriangle, Activity, BrainCircuit } from 'lucide-react';
+import { ShieldAlert, Lightbulb, TrendingUp, Music, PlayCircle, Download, Sparkles, BookOpen, AlertCircle, HeartPulse, Shield as ShieldIcon } from 'lucide-react';
+import { AlertTriangle, Activity, BrainCircuit, ChevronDown, ChevronUp } from 'lucide-react';
+import { calculateBurnoutRadar, BurnoutRadar } from '@/lib/burnout';
+import { createGuardianAlert, getUserProfile } from '@/lib/firebase/firestore';
 
 export default function Report() {
   const { user, isDemoMode } = useAuth();
   const { t } = useLanguage();
   const router = useRouter();
   const [checkIn, setCheckIn] = useState<CheckIn | null>(null);
+  const [checkIns, setCheckIns] = useState<CheckIn[]>([]);
+  const [burnoutRadar, setBurnoutRadar] = useState<BurnoutRadar | null>(null);
+  const [isPanicModeOpen, setIsPanicModeOpen] = useState(false);
+  const [alertSent, setAlertSent] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchLatestCheckIn = async () => {
       if (isDemoMode) {
         const local = localStorage.getItem('demo_last_checkin');
-        if (local) setCheckIn(JSON.parse(local));
+        if (local) {
+          const parsed = JSON.parse(local);
+          setCheckIn(parsed);
+          setCheckIns([parsed]);
+          setBurnoutRadar(calculateBurnoutRadar([parsed]));
+        }
       } else if (user) {
-        const checkIns = await getCheckIns(user.uid);
-        if (checkIns.length > 0) {
-          setCheckIn(checkIns[0]);
+        const history = await getCheckIns(user.uid);
+        if (history.length > 0) {
+          setCheckIn(history[0]);
+          setCheckIns(history);
+          setBurnoutRadar(calculateBurnoutRadar(history));
         }
       }
       setLoading(false);
     };
     fetchLatestCheckIn();
   }, [user, isDemoMode]);
+
+  const handleNotifyGuardian = async () => {
+    if (isDemoMode) {
+      setAlertSent(true);
+      return;
+    }
+    if (!user || !checkIn) return;
+    try {
+      const profile = await getUserProfile(user.uid);
+      if (profile?.guardianEmail) {
+        await createGuardianAlert({
+          userId: user.uid,
+          studentName: profile.name,
+          guardianEmail: profile.guardianEmail,
+          language: profile.preferredLanguage,
+          riskLevel: checkIn.riskLevel || 'moderate',
+          message: checkIn.result?.guardianSafeSummary || "The student may need extra support.",
+          createdAt: new Date().toISOString(),
+          status: 'pending'
+        });
+      }
+      setAlertSent(true);
+    } catch (e) {
+      console.error(e);
+    }
+  };
 
   if (loading) return <div className="p-8 text-xl font-bold flex justify-center items-center h-screen">{t.loadingInsights}</div>;
   
@@ -77,8 +116,12 @@ export default function Report() {
             {res.guardianAlertRecommended && (
               <div className="bg-white text-[#141414] p-4 font-bold border-4 border-[#141414] rounded-lg flex flex-col sm:flex-row justify-between items-center gap-4">
                 <span>{t.guardianAlertPrepared}</span>
-                <button className="px-6 py-3 bg-[#ffb703] border-4 border-[#141414] font-black rounded-lg shadow-[4px_4px_0_0_#141414] whitespace-nowrap">
-                  {t.notifyGuardian}
+                <button 
+                  onClick={handleNotifyGuardian}
+                  disabled={alertSent}
+                  className="px-6 py-3 bg-[#ffb703] border-4 border-[#141414] font-black rounded-lg shadow-[4px_4px_0_0_#141414] whitespace-nowrap disabled:opacity-50"
+                >
+                  {alertSent ? t.guardianNotifiedLabel : t.notifyGuardian}
                 </button>
               </div>
             )}
@@ -231,6 +274,145 @@ export default function Report() {
                 {t.audioSettings}
               </button>
             </div>
+          </div>
+
+          {/* 7. Exam Panic Mode (Spans 12 cols) */}
+          <div className="lg:col-span-12 bg-white border-4 border-[#141414] rounded-2xl shadow-[8px_8px_0_0_#141414] flex flex-col overflow-hidden">
+            <button 
+              onClick={() => setIsPanicModeOpen(!isPanicModeOpen)}
+              className="p-6 bg-[#ffb703] hover:bg-[#ffaa00] transition-colors flex items-center justify-between w-full border-b-4 border-transparent focus:border-[#141414]"
+            >
+              <div className="flex items-center gap-3">
+                <AlertCircle size={32} className="text-[#141414]" />
+                <h2 className="text-2xl font-black text-[#141414] text-left">{t.panicModeTitle || "Exam Panic Mode"}</h2>
+              </div>
+              {isPanicModeOpen ? <ChevronUp size={28} /> : <ChevronDown size={28} />}
+            </button>
+            
+            {isPanicModeOpen && (
+              <div className="p-6 md:p-8 bg-white grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="col-span-1 md:col-span-3 mb-2">
+                  <p className="text-xl font-bold bg-[#f6f1ff] p-4 rounded-xl border-4 border-[#141414] inline-block">
+                    &ldquo;{res.panicModePlan?.companionMessage || "I know it feels like everything is crashing down right now, but this panic will pass. Just focus on your breathing."}&rdquo;
+                  </p>
+                </div>
+                
+                <div className="bg-[#b8f7d4] border-4 border-[#141414] p-6 rounded-xl flex flex-col shadow-[4px_4px_0_0_#141414]">
+                  <h3 className="font-black text-xl mb-4 border-b-2 border-[#141414] pb-2 text-[#141414]">1. {t.panicStep1Title || "Breathe"}</h3>
+                  <ul className="flex flex-col gap-2 font-bold text-gray-800">
+                    {res.panicModePlan?.steps?.map((step, i) => <li key={i}>• {step}</li>) || (
+                      <>
+                        <li>• Drop your shoulders</li>
+                        <li>• Unclench your jaw</li>
+                        <li>• Take 3 deep, slow breaths</li>
+                      </>
+                    )}
+                  </ul>
+                </div>
+
+                <div className="bg-[#9ddcff] border-4 border-[#141414] p-6 rounded-xl flex flex-col shadow-[4px_4px_0_0_#141414]">
+                  <h3 className="font-black text-xl mb-4 border-b-2 border-[#141414] pb-2 text-[#141414]">2. {t.panicStep2Title || "Ground"}</h3>
+                  <p className="font-bold text-gray-800 flex-1">
+                    {res.panicModePlan?.groundingPrompt || "Name 3 things you can see right now that are not related to studying."}
+                  </p>
+                </div>
+
+                <div className="bg-[#ffe66d] border-4 border-[#141414] p-6 rounded-xl flex flex-col shadow-[4px_4px_0_0_#141414]">
+                  <h3 className="font-black text-xl mb-4 border-b-2 border-[#141414] pb-2 text-[#141414]">3. {t.panicStep3Title || "Act"}</h3>
+                  <p className="font-bold text-gray-800 flex-1">
+                    {res.panicModePlan?.nextTinyAction || "Get up and wash your face with cold water."}
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* 8. Study Recovery Plan (Spans 8 cols) */}
+          <div className="lg:col-span-8 bg-white border-4 border-[#141414] rounded-2xl shadow-[8px_8px_0_0_#141414] flex flex-col overflow-hidden">
+            <div className="p-6 border-b-4 border-[#141414] bg-[#f6f3f2] flex items-center justify-between">
+              <h2 className="text-2xl font-black text-[#141414] flex items-center gap-3">
+                <BookOpen size={28} className="text-[#7c5cff]" />
+                {t.studyRecoveryTitle || "Study Recovery Plan"}
+              </h2>
+            </div>
+            <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="border-4 border-[#141414] p-4 rounded-xl shadow-[4px_4px_0_0_#141414]">
+                <h3 className="font-black text-gray-500 mb-2">{t.recoveryNext30 || "Next 30 Minutes"}</h3>
+                <p className="font-bold text-lg text-[#141414]">{res.studyRecoveryPlan?.next30Minutes || "Take a break away from your desk."}</p>
+              </div>
+              <div className="border-4 border-[#141414] p-4 rounded-xl shadow-[4px_4px_0_0_#141414]">
+                <h3 className="font-black text-gray-500 mb-2">{t.recoveryTonight || "Tonight"}</h3>
+                <p className="font-bold text-lg text-[#141414]">{res.studyRecoveryPlan?.tonight || "Stop studying by 9 PM."}</p>
+              </div>
+              <div className="border-4 border-[#141414] p-4 rounded-xl shadow-[4px_4px_0_0_#141414]">
+                <h3 className="font-black text-gray-500 mb-2">{t.recoveryTomorrow || "Tomorrow Morning"}</h3>
+                <p className="font-bold text-lg text-[#141414]">{res.studyRecoveryPlan?.tomorrowMorning || "Start with an easy topic."}</p>
+              </div>
+              <div className="border-4 border-[#141414] p-4 rounded-xl shadow-[4px_4px_0_0_#141414] bg-[#ffdad6]">
+                <h3 className="font-black text-[#93000a] mb-2">{t.recoveryAvoid || "What to Avoid"}</h3>
+                <p className="font-bold text-lg text-[#141414]">{res.studyRecoveryPlan?.whatToAvoid || "Avoid comparing progress with friends."}</p>
+              </div>
+            </div>
+          </div>
+
+          {/* 9. Burnout Radar & Parent-Safe Summary (Spans 4 cols stack) */}
+          <div className="lg:col-span-4 flex flex-col gap-6 md:gap-8">
+            
+            {/* Burnout Radar */}
+            <div className="bg-white border-4 border-[#141414] rounded-2xl shadow-[8px_8px_0_0_#141414] overflow-hidden flex-1">
+              <div className="p-5 border-b-4 border-[#141414] bg-[#141414] text-white">
+                <h2 className="text-xl font-black flex items-center gap-2">
+                  <HeartPulse size={24} className="text-[#ff6b6b]" />
+                  {t.burnoutRadarTitle || "Burnout Radar"}
+                </h2>
+              </div>
+              <div className="p-5 flex flex-col gap-4">
+                {checkIns.length < 3 ? (
+                  <div className="text-center p-4">
+                    <p className="font-bold text-gray-500">{t.burnoutNeedMoreData || "Need 3+ check-ins to calculate burnout trends."}</p>
+                  </div>
+                ) : burnoutRadar ? (
+                  <>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="font-black text-[#141414]">{t.burnoutStatus || "Status"}</span>
+                      <span className={`px-3 py-1 font-black rounded-full border-2 border-[#141414] ${burnoutRadar.status === 'high' ? 'bg-[#ff6b6b] text-white' : burnoutRadar.status === 'rising' ? 'bg-[#ffb703]' : burnoutRadar.status === 'watch' ? 'bg-[#ffe66d]' : 'bg-[#b8f7d4]'}`}>
+                        {burnoutRadar.status.toUpperCase()}
+                      </span>
+                    </div>
+                    <p className="font-bold text-gray-700 text-sm leading-relaxed border-l-4 border-[#7c5cff] pl-3 py-1">
+                      {burnoutRadar.explanation}
+                    </p>
+                    <div className="bg-[#f6f1ff] p-3 rounded-lg border-2 border-[#141414] mt-2">
+                      <span className="font-black text-sm block mb-1 text-[#7c5cff]">{t.burnoutPreventionAction || "Prevention Action"}</span>
+                      <span className="font-bold text-[#141414] text-sm">{burnoutRadar.preventionStep}</span>
+                    </div>
+                  </>
+                ) : null}
+              </div>
+            </div>
+
+            {/* Parent-Safe Summary */}
+            <div className="bg-white border-4 border-[#141414] rounded-2xl shadow-[8px_8px_0_0_#141414] overflow-hidden flex-1">
+              <div className="p-5 border-b-4 border-[#141414] bg-[#e5e2e1]">
+                <h2 className="text-xl font-black flex items-center gap-2 text-[#141414]">
+                  <ShieldIcon size={24} />
+                  {t.parentSafeTitle || "Parent-Safe Summary"}
+                </h2>
+              </div>
+              <div className="p-5 flex flex-col gap-4">
+                <p className="font-bold text-gray-700 text-sm leading-relaxed">
+                  {res.guardianSafeSummary || "The student has been logging high stress levels recently. It might be helpful to encourage short breaks."}
+                </p>
+                <button 
+                  onClick={handleNotifyGuardian}
+                  disabled={alertSent}
+                  className="w-full py-2 bg-white border-4 border-[#141414] rounded-lg font-black shadow-[2px_2px_0_0_#141414] hover:bg-[#b8f7d4] hover:translate-y-[1px] hover:shadow-[1px_1px_0_0_#141414] transition-all disabled:opacity-50 text-[#141414] text-sm"
+                >
+                  {alertSent ? t.guardianNotifiedLabel : (t.notifyGuardian || "Notify Guardian")}
+                </button>
+              </div>
+            </div>
+
           </div>
 
         </div>

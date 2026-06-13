@@ -48,6 +48,23 @@ export interface CompanionResponse {
   followUpQuestion: string;
 }
 
+export interface StudyRecoveryPlan {
+  next30Minutes: string;
+  tonight: string;
+  tomorrowMorning: string;
+  whatToAvoid: string;
+  askForHelpWith: string;
+}
+
+export interface PanicModePlan {
+  title: string;
+  durationMinutes: number;
+  steps: string[];
+  groundingPrompt: string;
+  nextTinyAction: string;
+  companionMessage: string;
+}
+
 export interface GeminiWellnessResponse {
   summary: string;
   moodLabel: string;
@@ -56,6 +73,7 @@ export interface GeminiWellnessResponse {
   guardianAlertRecommended: boolean;
   stressTriggers: string[];
   emotionalPatterns: string[];
+  patternExplanation: string;
   selfDoubtSignals: string[];
   burnoutSignals: string[];
   copingStrategies: CopingStrategy[];
@@ -64,14 +82,21 @@ export interface GeminiWellnessResponse {
   companionResponse: CompanionResponse;
   nextSmallAction: string;
   safetyNote: string;
+  studyRecoveryPlan: StudyRecoveryPlan;
+  panicModePlan: PanicModePlan;
+  guardianSafeSummary: string;
 }
 
 export interface GuardianAlert {
   id?: string;
   userId: string;
+  studentName?: string;
+  guardianName?: string;
+  guardianRelationship?: string;
   guardianEmail: string;
+  language?: string;
   riskLevel: RiskLevel;
   message: string;
   createdAt: string;
-  status: 'pending' | 'sent' | 'failed';
+  status: 'pending' | 'sent' | 'failed' | 'prepared';
 }

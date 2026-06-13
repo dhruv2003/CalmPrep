@@ -22,6 +22,8 @@ describe('Gemini Prompt Builder', () => {
     expect(prompt).toContain('DO NOT diagnose any mental illness');
     expect(prompt).toContain('crisisSupportRequired');
     expect(prompt).toContain('riskLevel');
+    expect(prompt).toContain('guardianSafeSummary');
+    expect(prompt).toContain('NEVER include raw journal text');
     expect(prompt).toContain('I feel very overwhelmed today');
   });
 });

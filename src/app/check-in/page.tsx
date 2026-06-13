@@ -9,6 +9,7 @@ import { CheckInInput, checkInSchema } from '@/lib/validation';
 import { saveCheckIn } from '@/lib/firebase/firestore';
 import { getMockWellnessResponse } from '@/lib/mock-wellness';
 import { EnergyLevel, ExamType, GeminiWellnessResponse, Mood } from '@/lib/types';
+import { getJournalPrompts } from '@/lib/journal-prompts';
 import { Mic, MicOff } from 'lucide-react';
 
 type SpeechRecognitionResultEvent = {
@@ -313,6 +314,26 @@ export default function CheckIn() {
                   {isRecording ? <MicOff size={20} /> : <Mic size={20} />}
                 </button>
               </div>
+              
+              <div className="mb-4 flex flex-wrap gap-2">
+                {getJournalPrompts(language, formData.mood as Mood, formData.examType as ExamType).map((prompt, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => {
+                      setFormData(prev => ({
+                        ...prev,
+                        journalText: prev.journalText ? prev.journalText + '\n\n' + prompt + '\n' : prompt + '\n'
+                      }));
+                      document.getElementById('journalText')?.focus();
+                    }}
+                    className="text-sm bg-white border-2 border-border px-3 py-1 rounded-full neo-hover text-left hover:bg-calm-blue transition-colors"
+                  >
+                    {prompt}
+                  </button>
+                ))}
+              </div>
+
               <textarea 
                 id="journalText"
                 className="neo-input h-48 text-lg resize-none"
