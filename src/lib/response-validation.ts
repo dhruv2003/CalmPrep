@@ -35,7 +35,7 @@ export const wellnessResponseSchema = z.object({
   }),
   nextSmallAction: z.string().default(''),
   safetyNote: z.string().default(''),
-  patternExplanation: z.string().default(''),
+  patternExplanation: z.string().min(1),
   studyRecoveryPlan: z.object({
     next30Minutes: z.string(),
     tonight: z.string(),
@@ -51,7 +51,7 @@ export const wellnessResponseSchema = z.object({
     nextTinyAction: z.string(),
     companionMessage: z.string(),
   }),
-  guardianSafeSummary: z.string().default(''),
+  guardianSafeSummary: z.string().min(1),
 });
 
 export type ValidatedWellnessResponse = z.infer<typeof wellnessResponseSchema>;

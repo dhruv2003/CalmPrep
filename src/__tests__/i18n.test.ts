@@ -19,7 +19,30 @@ describe('i18n Dictionary', () => {
       'profileTitle',
       'profileSubtitle',
       'stressTriggers',
-      'emotionalPatterns'
+      'emotionalPatterns',
+      'examPanicModeTitle',
+      'panicButtonLabel',
+      'panicStepBreathe',
+      'panicStepGround',
+      'panicStepNextAction',
+      'studyRecoveryPlanTitle',
+      'parentSafeSummaryTitle',
+      'burnoutRadarTitle',
+      'microJournalPromptsTitle',
+      'recoveryNext30Minutes',
+      'recoveryTonight',
+      'recoveryTomorrowMorning',
+      'recoveryWhatToAvoid',
+      'recoveryAskForHelpWith',
+      'burnoutNeedMoreData',
+      'whyThisMatters',
+      'onePreventionStep',
+      'stressTrendLabel',
+      'sleepTrendLabel',
+      'studyHoursTrendLabel',
+      'moodTrendLabel',
+      'riskTrendLabel',
+      'guardianPreparedStatus',
     ];
     
     for (const key of keys) {
@@ -63,6 +86,14 @@ describe('i18n Dictionary', () => {
       'Audio Settings',
       'Logout',
       'Check-in',
+      'Exam Panic Mode',
+      'Study Recovery Plan',
+      'Parent-Safe Summary',
+      'Burnout Radar',
+      'Micro-Journal Prompts',
+      'webkitSpeechRecognition',
+      'SpeechRecognition',
+      'Voice input state',
     ];
 
     const combinedSource = uiFiles

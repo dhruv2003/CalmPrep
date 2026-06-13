@@ -9,6 +9,8 @@ export interface BurnoutRadar {
   moodTrend: 'improving' | 'stable' | 'declining';
   stressTrend: 'decreasing' | 'stable' | 'increasing';
   sleepTrend: 'improving' | 'stable' | 'declining';
+  studyHoursTrend: 'decreasing' | 'stable' | 'increasing';
+  riskTrend: 'decreasing' | 'stable' | 'increasing';
   urgentCount: number;
   status: BurnoutStatus;
   explanation: string;
@@ -24,7 +26,7 @@ export function calculateBurnoutRadar(checkins: CheckIn[]): BurnoutRadar | null 
   );
 
   const n = sorted.length;
-  const recentCheckins = sorted.slice(Math.max(0, n - 7)); // Last 7 days
+  const recentCheckins = sorted.slice(Math.max(0, n - 5));
 
   let totalStress = 0;
   let totalSleep = 0;
@@ -47,13 +49,27 @@ export function calculateBurnoutRadar(checkins: CheckIn[]): BurnoutRadar | null 
   const firstHalf = recentCheckins.slice(0, half);
   const secondHalf = recentCheckins.slice(half);
 
-  const getAvg = (arr: CheckIn[], key: 'stressLevel' | 'sleepHours') =>
+  const getAvg = (arr: CheckIn[], key: 'stressLevel' | 'sleepHours' | 'studyHours') =>
     arr.reduce((sum, c) => sum + c[key], 0) / (arr.length || 1);
+
+  const riskScore = (riskLevel?: CheckIn['riskLevel']) => {
+    if (riskLevel === 'urgent') return 3;
+    if (riskLevel === 'high') return 2;
+    if (riskLevel === 'moderate') return 1;
+    return 0;
+  };
+
+  const getRiskAvg = (arr: CheckIn[]) =>
+    arr.reduce((sum, c) => sum + riskScore(c.riskLevel), 0) / (arr.length || 1);
 
   const stressFirst = getAvg(firstHalf, 'stressLevel');
   const stressSecond = getAvg(secondHalf, 'stressLevel');
   const sleepFirst = getAvg(firstHalf, 'sleepHours');
   const sleepSecond = getAvg(secondHalf, 'sleepHours');
+  const studyFirst = getAvg(firstHalf, 'studyHours');
+  const studySecond = getAvg(secondHalf, 'studyHours');
+  const riskFirst = getRiskAvg(firstHalf);
+  const riskSecond = getRiskAvg(secondHalf);
 
   let stressTrend: BurnoutRadar['stressTrend'] = 'stable';
   if (stressSecond > stressFirst + 1) stressTrend = 'increasing';
@@ -63,6 +79,14 @@ export function calculateBurnoutRadar(checkins: CheckIn[]): BurnoutRadar | null 
   if (sleepSecond > sleepFirst + 0.5) sleepTrend = 'improving';
   else if (sleepSecond < sleepFirst - 0.5) sleepTrend = 'declining';
 
+  let studyHoursTrend: BurnoutRadar['studyHoursTrend'] = 'stable';
+  if (studySecond > studyFirst + 1) studyHoursTrend = 'increasing';
+  else if (studySecond < studyFirst - 1) studyHoursTrend = 'decreasing';
+
+  let riskTrend: BurnoutRadar['riskTrend'] = 'stable';
+  if (riskSecond > riskFirst + 0.5) riskTrend = 'increasing';
+  else if (riskSecond < riskFirst - 0.5) riskTrend = 'decreasing';
+
   const status = getBurnoutStatus(stressAvg, sleepAvg, studyHoursAvg, urgentCount, stressTrend, sleepTrend);
 
   let explanation = '';
@@ -70,15 +94,15 @@ export function calculateBurnoutRadar(checkins: CheckIn[]): BurnoutRadar | null 
 
   switch (status) {
     case 'high':
-      explanation = 'Your recent check-ins show very high stress, low sleep, or urgent signs. This is a critical burnout risk.';
-      preventionStep = 'You need an immediate break. Please step away from studying for the rest of the day and prioritize sleep.';
+      explanation = 'Recent check-ins show high stress signals, lower sleep, or repeated high-risk signs that may suggest elevated burnout risk.';
+      preventionStep = 'Pause heavy study blocks today, choose one light review task, and protect sleep tonight.';
       break;
     case 'rising':
-      explanation = 'Your stress is increasing while sleep is decreasing, or you are studying extreme hours. Burnout risk is rising.';
-      preventionStep = 'Cut your study time by 20% today and add 1 extra hour of sleep tonight.';
+      explanation = 'Stress appears to be rising while rest is decreasing, or study hours are stretching high.';
+      preventionStep = 'Reduce the next study block, add a real break, and choose one small topic instead of a full mock.';
       break;
     case 'watch':
-      explanation = 'There are some mild signs of fatigue or stress. Keep an eye on your rest.';
+      explanation = 'There are mild stress or fatigue signs worth watching.';
       preventionStep = 'Make sure you are taking 10-minute breaks every hour of studying.';
       break;
     case 'stable':
@@ -95,6 +119,8 @@ export function calculateBurnoutRadar(checkins: CheckIn[]): BurnoutRadar | null 
     moodTrend: 'stable', // simplified
     stressTrend,
     sleepTrend,
+    studyHoursTrend,
+    riskTrend,
     urgentCount,
     status,
     explanation,

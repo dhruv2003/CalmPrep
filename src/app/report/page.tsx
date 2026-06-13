@@ -5,22 +5,45 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/components/AuthProvider';
 import { useLanguage } from '@/components/LanguageProvider';
 import { Navigation } from '@/components/Navigation';
-import { CheckIn } from '@/lib/types';
+import { CheckIn, UserProfile } from '@/lib/types';
 import { getCheckIns } from '@/lib/firebase/firestore';
-import { ShieldAlert, Lightbulb, TrendingUp, Music, PlayCircle, Download, Sparkles, BookOpen, AlertCircle, HeartPulse, Shield as ShieldIcon } from 'lucide-react';
+import { ShieldAlert, Lightbulb, TrendingUp, Download, Sparkles, BookOpen, AlertCircle, HeartPulse, Shield as ShieldIcon } from 'lucide-react';
 import { AlertTriangle, Activity, BrainCircuit, ChevronDown, ChevronUp } from 'lucide-react';
 import { calculateBurnoutRadar, BurnoutRadar } from '@/lib/burnout';
 import { createGuardianAlert, getUserProfile } from '@/lib/firebase/firestore';
+import { buildGuardianAlert, isValidGuardianEmail } from '@/lib/guardian-alerts';
+
+function getDemoCheckInHistory(latest: CheckIn): CheckIn[] {
+  return [
+    {
+      ...latest,
+      stressLevel: Math.max(1, latest.stressLevel - 2),
+      sleepHours: Math.min(9, latest.sleepHours + 1.5),
+      studyHours: Math.max(1, latest.studyHours - 1),
+      riskLevel: 'low',
+      createdAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+    },
+    {
+      ...latest,
+      stressLevel: Math.max(1, latest.stressLevel - 1),
+      sleepHours: Math.min(9, latest.sleepHours + 0.5),
+      studyHours: latest.studyHours,
+      riskLevel: 'moderate',
+      createdAt: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
+    },
+    latest,
+  ];
+}
 
 export default function Report() {
   const { user, isDemoMode } = useAuth();
   const { t } = useLanguage();
   const router = useRouter();
   const [checkIn, setCheckIn] = useState<CheckIn | null>(null);
-  const [checkIns, setCheckIns] = useState<CheckIn[]>([]);
   const [burnoutRadar, setBurnoutRadar] = useState<BurnoutRadar | null>(null);
+  const [profile, setProfile] = useState<UserProfile | null>(null);
   const [isPanicModeOpen, setIsPanicModeOpen] = useState(false);
-  const [alertSent, setAlertSent] = useState(false);
+  const [guardianStatus, setGuardianStatus] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -29,15 +52,18 @@ export default function Report() {
         const local = localStorage.getItem('demo_last_checkin');
         if (local) {
           const parsed = JSON.parse(local);
+          const history = getDemoCheckInHistory(parsed);
           setCheckIn(parsed);
-          setCheckIns([parsed]);
-          setBurnoutRadar(calculateBurnoutRadar([parsed]));
+          setBurnoutRadar(calculateBurnoutRadar(history));
         }
       } else if (user) {
-        const history = await getCheckIns(user.uid);
+        const [history, userProfile] = await Promise.all([
+          getCheckIns(user.uid),
+          getUserProfile(user.uid),
+        ]);
+        setProfile(userProfile);
         if (history.length > 0) {
           setCheckIn(history[0]);
-          setCheckIns(history);
           setBurnoutRadar(calculateBurnoutRadar(history));
         }
       }
@@ -47,28 +73,27 @@ export default function Report() {
   }, [user, isDemoMode]);
 
   const handleNotifyGuardian = async () => {
-    if (isDemoMode) {
-      setAlertSent(true);
-      return;
-    }
-    if (!user || !checkIn) return;
+    if (!checkIn) return;
+
     try {
-      const profile = await getUserProfile(user.uid);
-      if (profile?.guardianEmail) {
-        await createGuardianAlert({
-          userId: user.uid,
-          studentName: profile.name,
-          guardianEmail: profile.guardianEmail,
-          language: profile.preferredLanguage,
-          riskLevel: checkIn.riskLevel || 'moderate',
-          message: checkIn.result?.guardianSafeSummary || "The student may need extra support.",
-          createdAt: new Date().toISOString(),
-          status: 'pending'
-        });
+      if (isDemoMode) {
+        setGuardianStatus(t.guardianPreparedStatus);
+        return;
       }
-      setAlertSent(true);
+
+      if (!user || !profile) return;
+
+      const alert = buildGuardianAlert({
+        userId: user.uid,
+        profile,
+        checkIn,
+      });
+
+      await createGuardianAlert(alert);
+      setGuardianStatus(t.guardianPreparedStatus);
     } catch (e) {
       console.error(e);
+      setGuardianStatus(t.guardianUnavailableLabel);
     }
   };
 
@@ -87,6 +112,9 @@ export default function Report() {
   }
 
   const res = checkIn.result;
+  const hasGuardianConsent = Boolean(profile?.guardianConsentEnabled && isValidGuardianEmail(profile.guardianEmail));
+  const isHighRisk = res.riskLevel === 'high' || res.riskLevel === 'urgent';
+  const canNotifyGuardian = isDemoMode ? isHighRisk : isHighRisk && hasGuardianConsent;
 
   return (
     <div className="min-h-screen flex flex-col bg-[#f6f1ff]">
@@ -94,7 +122,6 @@ export default function Report() {
       
       <main className="flex-1 max-w-[1400px] w-full mx-auto p-4 md:p-8 flex flex-col gap-8 pb-24">
         
-        {/* Header Section */}
         <section className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 border-b-4 border-[#141414] pb-6">
           <div>
             <h1 className="text-4xl md:text-5xl font-black text-[#141414] mb-2 tracking-tight">{t.wellnessReportTitle}</h1>
@@ -106,32 +133,29 @@ export default function Report() {
           </button>
         </section>
 
-        {/* Safety Support Card */}
         {res.crisisSupportRequired && (
           <div className="neo-card bg-[#ff6b6b] text-white border-4 border-[#141414] shadow-[8px_8px_0_0_#141414] animate-pulse">
             <h2 className="text-3xl font-black mb-2 flex items-center gap-3">
               <ShieldAlert size={36} /> {t.crisisCardTitle}
             </h2>
             <p className="text-xl font-bold mb-4">{t.crisisCardText}</p>
-            {res.guardianAlertRecommended && (
+            {res.guardianAlertRecommended && canNotifyGuardian && (
               <div className="bg-white text-[#141414] p-4 font-bold border-4 border-[#141414] rounded-lg flex flex-col sm:flex-row justify-between items-center gap-4">
-                <span>{t.guardianAlertPrepared}</span>
+                <span>{guardianStatus || t.guardianAlertPrepared}</span>
                 <button 
                   onClick={handleNotifyGuardian}
-                  disabled={alertSent}
+                  disabled={Boolean(guardianStatus)}
                   className="px-6 py-3 bg-[#ffb703] border-4 border-[#141414] font-black rounded-lg shadow-[4px_4px_0_0_#141414] whitespace-nowrap disabled:opacity-50"
                 >
-                  {alertSent ? t.guardianNotifiedLabel : t.notifyGuardian}
+                  {guardianStatus ? t.guardianNotifiedLabel : t.notifyGuardian}
                 </button>
               </div>
             )}
           </div>
         )}
 
-        {/* Bento Grid Layout */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 md:gap-8">
           
-          {/* 1. Empathetic Companion (Spans 8 cols) */}
           <div className="lg:col-span-8 bg-[#7c5cff] border-4 border-[#141414] rounded-2xl p-6 md:p-8 shadow-[8px_8px_0_0_#141414] flex flex-col justify-between">
             <div className="flex items-start gap-6 mb-8">
               <div className="w-16 h-16 rounded-full border-4 border-[#141414] bg-white flex items-center justify-center shrink-0">
@@ -149,15 +173,8 @@ export default function Report() {
                 )}
               </div>
             </div>
-            <div className="flex justify-end">
-              <button className="flex items-center gap-2 px-6 py-3 bg-white text-[#7c5cff] border-4 border-[#141414] rounded-lg font-black shadow-[4px_4px_0_0_#141414] hover:bg-[#b8f7d4] hover:text-[#141414] transition-colors">
-                <PlayCircle size={20} />
-                {t.listenToMessage}
-              </button>
-            </div>
           </div>
 
-          {/* 2. Motivational Card (Spans 4 cols) */}
           <div className="lg:col-span-4 bg-[#ffe66d] border-4 border-[#141414] rounded-2xl p-6 shadow-[8px_8px_0_0_#141414] flex flex-col items-center justify-center text-center relative overflow-hidden">
             <div className="absolute top-0 right-0 w-24 h-24 bg-white border-l-4 border-b-4 border-[#141414] rounded-bl-full -mr-4 -mt-4 opacity-50"></div>
             <Lightbulb size={48} className="text-[#141414] mb-6" />
@@ -167,7 +184,6 @@ export default function Report() {
             </p>
           </div>
 
-          {/* 3. Stress Triggers (Spans 6 cols) */}
           <div className="lg:col-span-6 bg-white border-4 border-[#141414] rounded-2xl shadow-[8px_8px_0_0_#141414] overflow-hidden flex flex-col">
             <div className="p-6 border-b-4 border-[#141414] bg-[#f6f3f2] flex items-center justify-between">
               <h2 className="text-2xl font-black text-[#141414] flex items-center gap-3">
@@ -188,12 +204,11 @@ export default function Report() {
             </div>
           </div>
 
-          {/* 4. Emotional Patterns (Spans 6 cols) */}
           <div className="lg:col-span-6 bg-white border-4 border-[#141414] rounded-2xl shadow-[8px_8px_0_0_#141414] overflow-hidden flex flex-col">
             <div className="p-6 border-b-4 border-[#141414] bg-[#b8f7d4] flex items-center justify-between">
               <h2 className="text-2xl font-black text-[#141414] flex items-center gap-3">
                 <Activity size={28} />
-                Emotional Patterns
+                {t.emotionalPatterns}
               </h2>
             </div>
             <div className="p-6 flex flex-col gap-4">
@@ -219,7 +234,6 @@ export default function Report() {
             </div>
           </div>
 
-          {/* 5. Coping Strategies (Spans 7 cols) */}
           <div className="lg:col-span-7 bg-white border-4 border-[#141414] rounded-2xl shadow-[8px_8px_0_0_#141414] flex flex-col overflow-hidden">
             <div className="p-6 border-b-4 border-[#141414] bg-[#f0edec]">
               <h2 className="text-2xl font-black text-[#141414]">{t.personalizedActionPlan}</h2>
@@ -240,7 +254,6 @@ export default function Report() {
             </ul>
           </div>
 
-          {/* 6. Adaptive Mindfulness (Spans 5 cols) */}
           <div className="lg:col-span-5 bg-[#9ddcff] border-4 border-[#141414] rounded-2xl p-6 md:p-8 shadow-[8px_8px_0_0_#141414] flex flex-col justify-between relative overflow-hidden">
             <div>
               <div className="inline-flex items-center gap-2 bg-[#141414] text-[#9ddcff] border-2 border-[#141414] px-3 py-1 rounded-full font-bold text-sm mb-6 shadow-[2px_2px_0_0_#141414]">
@@ -254,170 +267,185 @@ export default function Report() {
               </p>
             </div>
             
-            <div className="bg-white border-4 border-[#141414] rounded-xl p-6 shadow-[4px_4px_0_0_#141414] relative z-10">
-              <div className="flex items-center gap-4 mb-6">
-                <button className="w-14 h-14 rounded-full bg-[#141414] text-white border-4 border-[#141414] flex items-center justify-center shadow-[2px_2px_0_0_#141414] hover:bg-[#7c5cff] hover:text-white transition-all shrink-0">
-                  <PlayCircle size={32} />
-                </button>
-                <div className="flex-grow flex flex-col gap-2">
-                  <div className="w-full h-4 border-4 border-[#141414] bg-[#e5e2e1] rounded-full relative cursor-pointer overflow-hidden">
-                    <div className="absolute top-0 left-0 h-full w-[0%] bg-[#7c5cff] border-r-4 border-[#141414]"></div>
-                  </div>
-                  <div className="flex justify-between font-bold text-gray-600 text-sm">
-                    <span>0:00</span>
-                    <span>{res.mindfulnessExercise?.durationMinutes}:00</span>
-                  </div>
-                </div>
-              </div>
-              <button className="w-full py-3 bg-[#f6f3f2] text-[#141414] border-4 border-[#141414] rounded-lg font-black hover:bg-[#ffe66d] transition-colors flex items-center justify-center gap-2">
-                <Music size={20} />
-                {t.audioSettings}
-              </button>
-            </div>
+            <ol className="bg-white border-4 border-[#141414] rounded-xl p-6 shadow-[4px_4px_0_0_#141414] relative z-10 flex flex-col gap-3 font-bold">
+              {res.mindfulnessExercise?.steps?.map((step, index) => (
+                <li key={step} className="flex gap-3">
+                  <span className="font-black">{index + 1}.</span>
+                  <span>{step}</span>
+                </li>
+              ))}
+            </ol>
           </div>
 
-          {/* 7. Exam Panic Mode (Spans 12 cols) */}
           <div className="lg:col-span-12 bg-white border-4 border-[#141414] rounded-2xl shadow-[8px_8px_0_0_#141414] flex flex-col overflow-hidden">
-            <button 
-              onClick={() => setIsPanicModeOpen(!isPanicModeOpen)}
-              className="p-6 bg-[#ffb703] hover:bg-[#ffaa00] transition-colors flex items-center justify-between w-full border-b-4 border-transparent focus:border-[#141414]"
-            >
+            <div className="p-6 bg-[#ffb703] border-b-4 border-[#141414] flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
               <div className="flex items-center gap-3">
                 <AlertCircle size={32} className="text-[#141414]" />
-                <h2 className="text-2xl font-black text-[#141414] text-left">{t.panicModeTitle || "Exam Panic Mode"}</h2>
+                <h2 className="text-2xl font-black text-[#141414] text-left">{t.examPanicModeTitle}</h2>
               </div>
+              <button
+                type="button"
+                onClick={() => setIsPanicModeOpen(!isPanicModeOpen)}
+                aria-expanded={isPanicModeOpen}
+                className="inline-flex items-center justify-center gap-2 rounded-lg border-4 border-[#141414] bg-white px-5 py-3 font-black text-[#141414] shadow-[4px_4px_0_0_#141414] transition-all hover:bg-[#b8f7d4] focus:outline-none focus:ring-4 focus:ring-[#7c5cff]"
+              >
+                {t.panicButtonLabel}
               {isPanicModeOpen ? <ChevronUp size={28} /> : <ChevronDown size={28} />}
-            </button>
+              </button>
+            </div>
             
             {isPanicModeOpen && (
-              <div className="p-6 md:p-8 bg-white grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div aria-live="polite" className="p-6 md:p-8 bg-white grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div className="col-span-1 md:col-span-3 mb-2">
                   <p className="text-xl font-bold bg-[#f6f1ff] p-4 rounded-xl border-4 border-[#141414] inline-block">
-                    &ldquo;{res.panicModePlan?.companionMessage || "I know it feels like everything is crashing down right now, but this panic will pass. Just focus on your breathing."}&rdquo;
+                    &ldquo;{res.panicModePlan.companionMessage}&rdquo;
                   </p>
                 </div>
                 
                 <div className="bg-[#b8f7d4] border-4 border-[#141414] p-6 rounded-xl flex flex-col shadow-[4px_4px_0_0_#141414]">
-                  <h3 className="font-black text-xl mb-4 border-b-2 border-[#141414] pb-2 text-[#141414]">1. {t.panicStep1Title || "Breathe"}</h3>
+                  <h3 className="font-black text-xl mb-4 border-b-2 border-[#141414] pb-2 text-[#141414]">1. {t.panicStepBreathe}</h3>
+                  <p className="mb-3 font-black">{t.panicBreathingReset}</p>
                   <ul className="flex flex-col gap-2 font-bold text-gray-800">
-                    {res.panicModePlan?.steps?.map((step, i) => <li key={i}>• {step}</li>) || (
-                      <>
-                        <li>• Drop your shoulders</li>
-                        <li>• Unclench your jaw</li>
-                        <li>• Take 3 deep, slow breaths</li>
-                      </>
-                    )}
+                    {res.panicModePlan.steps.map((step) => <li key={step}>- {step}</li>)}
                   </ul>
                 </div>
 
                 <div className="bg-[#9ddcff] border-4 border-[#141414] p-6 rounded-xl flex flex-col shadow-[4px_4px_0_0_#141414]">
-                  <h3 className="font-black text-xl mb-4 border-b-2 border-[#141414] pb-2 text-[#141414]">2. {t.panicStep2Title || "Ground"}</h3>
+                  <h3 className="font-black text-xl mb-4 border-b-2 border-[#141414] pb-2 text-[#141414]">2. {t.panicStepGround}</h3>
+                  <p className="mb-3 font-black">{t.panicGroundingReset}</p>
                   <p className="font-bold text-gray-800 flex-1">
-                    {res.panicModePlan?.groundingPrompt || "Name 3 things you can see right now that are not related to studying."}
+                    {res.panicModePlan.groundingPrompt}
                   </p>
                 </div>
 
                 <div className="bg-[#ffe66d] border-4 border-[#141414] p-6 rounded-xl flex flex-col shadow-[4px_4px_0_0_#141414]">
-                  <h3 className="font-black text-xl mb-4 border-b-2 border-[#141414] pb-2 text-[#141414]">3. {t.panicStep3Title || "Act"}</h3>
+                  <h3 className="font-black text-xl mb-4 border-b-2 border-[#141414] pb-2 text-[#141414]">3. {t.panicStepNextAction}</h3>
                   <p className="font-bold text-gray-800 flex-1">
-                    {res.panicModePlan?.nextTinyAction || "Get up and wash your face with cold water."}
+                    {res.panicModePlan.nextTinyAction}
                   </p>
                 </div>
+
+                {canNotifyGuardian && (
+                  <button
+                    type="button"
+                    onClick={handleNotifyGuardian}
+                    disabled={Boolean(guardianStatus)}
+                    className="col-span-1 md:col-span-3 rounded-lg border-4 border-[#141414] bg-white px-5 py-3 font-black text-[#141414] shadow-[4px_4px_0_0_#141414] transition-all hover:bg-[#b8f7d4] disabled:opacity-60"
+                  >
+                    {guardianStatus ? t.guardianNotifiedLabel : t.notifyGuardian}
+                  </button>
+                )}
               </div>
             )}
           </div>
 
-          {/* 8. Study Recovery Plan (Spans 8 cols) */}
           <div className="lg:col-span-8 bg-white border-4 border-[#141414] rounded-2xl shadow-[8px_8px_0_0_#141414] flex flex-col overflow-hidden">
             <div className="p-6 border-b-4 border-[#141414] bg-[#f6f3f2] flex items-center justify-between">
               <h2 className="text-2xl font-black text-[#141414] flex items-center gap-3">
                 <BookOpen size={28} className="text-[#7c5cff]" />
-                {t.studyRecoveryTitle || "Study Recovery Plan"}
+                {t.studyRecoveryPlanTitle}
               </h2>
             </div>
             <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="border-4 border-[#141414] p-4 rounded-xl shadow-[4px_4px_0_0_#141414]">
-                <h3 className="font-black text-gray-500 mb-2">{t.recoveryNext30 || "Next 30 Minutes"}</h3>
-                <p className="font-bold text-lg text-[#141414]">{res.studyRecoveryPlan?.next30Minutes || "Take a break away from your desk."}</p>
+                <h3 className="font-black text-gray-500 mb-2">{t.recoveryNext30Minutes}</h3>
+                <p className="font-bold text-lg text-[#141414]">{res.studyRecoveryPlan.next30Minutes}</p>
               </div>
               <div className="border-4 border-[#141414] p-4 rounded-xl shadow-[4px_4px_0_0_#141414]">
-                <h3 className="font-black text-gray-500 mb-2">{t.recoveryTonight || "Tonight"}</h3>
-                <p className="font-bold text-lg text-[#141414]">{res.studyRecoveryPlan?.tonight || "Stop studying by 9 PM."}</p>
+                <h3 className="font-black text-gray-500 mb-2">{t.recoveryTonight}</h3>
+                <p className="font-bold text-lg text-[#141414]">{res.studyRecoveryPlan.tonight}</p>
               </div>
               <div className="border-4 border-[#141414] p-4 rounded-xl shadow-[4px_4px_0_0_#141414]">
-                <h3 className="font-black text-gray-500 mb-2">{t.recoveryTomorrow || "Tomorrow Morning"}</h3>
-                <p className="font-bold text-lg text-[#141414]">{res.studyRecoveryPlan?.tomorrowMorning || "Start with an easy topic."}</p>
+                <h3 className="font-black text-gray-500 mb-2">{t.recoveryTomorrowMorning}</h3>
+                <p className="font-bold text-lg text-[#141414]">{res.studyRecoveryPlan.tomorrowMorning}</p>
               </div>
               <div className="border-4 border-[#141414] p-4 rounded-xl shadow-[4px_4px_0_0_#141414] bg-[#ffdad6]">
-                <h3 className="font-black text-[#93000a] mb-2">{t.recoveryAvoid || "What to Avoid"}</h3>
-                <p className="font-bold text-lg text-[#141414]">{res.studyRecoveryPlan?.whatToAvoid || "Avoid comparing progress with friends."}</p>
+                <h3 className="font-black text-[#93000a] mb-2">{t.recoveryWhatToAvoid}</h3>
+                <p className="font-bold text-lg text-[#141414]">{res.studyRecoveryPlan.whatToAvoid}</p>
+              </div>
+              <div className="border-4 border-[#141414] p-4 rounded-xl shadow-[4px_4px_0_0_#141414] md:col-span-2 bg-[#b8f7d4]">
+                <h3 className="font-black text-[#141414] mb-2">{t.recoveryAskForHelpWith}</h3>
+                <p className="font-bold text-lg text-[#141414]">{res.studyRecoveryPlan.askForHelpWith}</p>
               </div>
             </div>
           </div>
 
-          {/* 9. Burnout Radar & Parent-Safe Summary (Spans 4 cols stack) */}
           <div className="lg:col-span-4 flex flex-col gap-6 md:gap-8">
             
-            {/* Burnout Radar */}
-            <div className="bg-white border-4 border-[#141414] rounded-2xl shadow-[8px_8px_0_0_#141414] overflow-hidden flex-1">
-              <div className="p-5 border-b-4 border-[#141414] bg-[#141414] text-white">
-                <h2 className="text-xl font-black flex items-center gap-2">
-                  <HeartPulse size={24} className="text-[#ff6b6b]" />
-                  {t.burnoutRadarTitle || "Burnout Radar"}
-                </h2>
-              </div>
-              <div className="p-5 flex flex-col gap-4">
-                {checkIns.length < 3 ? (
-                  <div className="text-center p-4">
-                    <p className="font-bold text-gray-500">{t.burnoutNeedMoreData || "Need 3+ check-ins to calculate burnout trends."}</p>
-                  </div>
-                ) : burnoutRadar ? (
-                  <>
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="font-black text-[#141414]">{t.burnoutStatus || "Status"}</span>
-                      <span className={`px-3 py-1 font-black rounded-full border-2 border-[#141414] ${burnoutRadar.status === 'high' ? 'bg-[#ff6b6b] text-white' : burnoutRadar.status === 'rising' ? 'bg-[#ffb703]' : burnoutRadar.status === 'watch' ? 'bg-[#ffe66d]' : 'bg-[#b8f7d4]'}`}>
-                        {burnoutRadar.status.toUpperCase()}
-                      </span>
-                    </div>
-                    <p className="font-bold text-gray-700 text-sm leading-relaxed border-l-4 border-[#7c5cff] pl-3 py-1">
-                      {burnoutRadar.explanation}
-                    </p>
-                    <div className="bg-[#f6f1ff] p-3 rounded-lg border-2 border-[#141414] mt-2">
-                      <span className="font-black text-sm block mb-1 text-[#7c5cff]">{t.burnoutPreventionAction || "Prevention Action"}</span>
-                      <span className="font-bold text-[#141414] text-sm">{burnoutRadar.preventionStep}</span>
-                    </div>
-                  </>
-                ) : null}
-              </div>
-            </div>
-
-            {/* Parent-Safe Summary */}
             <div className="bg-white border-4 border-[#141414] rounded-2xl shadow-[8px_8px_0_0_#141414] overflow-hidden flex-1">
               <div className="p-5 border-b-4 border-[#141414] bg-[#e5e2e1]">
                 <h2 className="text-xl font-black flex items-center gap-2 text-[#141414]">
                   <ShieldIcon size={24} />
-                  {t.parentSafeTitle || "Parent-Safe Summary"}
+                  {t.parentSafeSummaryTitle}
                 </h2>
               </div>
               <div className="p-5 flex flex-col gap-4">
                 <p className="font-bold text-gray-700 text-sm leading-relaxed">
-                  {res.guardianSafeSummary || "The student has been logging high stress levels recently. It might be helpful to encourage short breaks."}
+                  {res.guardianSafeSummary}
                 </p>
-                <button 
-                  onClick={handleNotifyGuardian}
-                  disabled={alertSent}
-                  className="w-full py-2 bg-white border-4 border-[#141414] rounded-lg font-black shadow-[2px_2px_0_0_#141414] hover:bg-[#b8f7d4] hover:translate-y-[1px] hover:shadow-[1px_1px_0_0_#141414] transition-all disabled:opacity-50 text-[#141414] text-sm"
-                >
-                  {alertSent ? t.guardianNotifiedLabel : (t.notifyGuardian || "Notify Guardian")}
-                </button>
+                {canNotifyGuardian && (
+                  <button 
+                    onClick={handleNotifyGuardian}
+                    disabled={Boolean(guardianStatus)}
+                    className="w-full py-2 bg-white border-4 border-[#141414] rounded-lg font-black shadow-[2px_2px_0_0_#141414] hover:bg-[#b8f7d4] hover:translate-y-[1px] hover:shadow-[1px_1px_0_0_#141414] transition-all disabled:opacity-50 text-[#141414] text-sm"
+                  >
+                    {guardianStatus ? t.guardianNotifiedLabel : t.notifyGuardian}
+                  </button>
+                )}
+                {guardianStatus && <p className="font-bold text-sm">{guardianStatus}</p>}
               </div>
             </div>
 
+          </div>
+
+          <div className="lg:col-span-12 bg-white border-4 border-[#141414] rounded-2xl shadow-[8px_8px_0_0_#141414] overflow-hidden">
+            <div className="p-5 border-b-4 border-[#141414] bg-[#141414] text-white">
+              <h2 className="text-2xl font-black flex items-center gap-2">
+                <HeartPulse size={28} className="text-[#ff6b6b]" />
+                {t.burnoutRadarTitle}
+              </h2>
+            </div>
+            <div className="p-5 flex flex-col gap-4">
+              {!burnoutRadar ? (
+                <p className="font-bold text-gray-500">{t.burnoutNeedMoreData}</p>
+              ) : (
+                <>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <span className={`px-3 py-1 font-black rounded-full border-2 border-[#141414] ${burnoutRadar.status === 'high' ? 'bg-[#ff6b6b] text-white' : burnoutRadar.status === 'rising' ? 'bg-[#ffb703]' : burnoutRadar.status === 'watch' ? 'bg-[#ffe66d]' : 'bg-[#b8f7d4]'}`}>
+                      {t.burnoutStatus}: {burnoutRadar.status}
+                    </span>
+                    <TrendChip label={t.stressTrendLabel} value={burnoutRadar.stressTrend} />
+                    <TrendChip label={t.sleepTrendLabel} value={burnoutRadar.sleepTrend} />
+                    <TrendChip label={t.studyHoursTrendLabel} value={burnoutRadar.studyHoursTrend} />
+                    <TrendChip label={t.moodTrendLabel} value={burnoutRadar.moodTrend} />
+                    <TrendChip label={t.riskTrendLabel} value={burnoutRadar.riskTrend} />
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="rounded-xl border-4 border-[#141414] bg-[#f6f1ff] p-4 shadow-[4px_4px_0_0_#141414]">
+                      <h3 className="font-black mb-2">{t.whyThisMatters}</h3>
+                      <p className="font-bold">{burnoutRadar.explanation}</p>
+                    </div>
+                    <div className="rounded-xl border-4 border-[#141414] bg-[#b8f7d4] p-4 shadow-[4px_4px_0_0_#141414]">
+                      <h3 className="font-black mb-2">{t.onePreventionStep}</h3>
+                      <p className="font-bold">{burnoutRadar.preventionStep}</p>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
           </div>
 
         </div>
 
       </main>
     </div>
+  );
+}
+
+function TrendChip({ label, value }: { label: string; value: string }) {
+  return (
+    <span className="rounded-full border-2 border-[#141414] bg-white px-3 py-1 text-sm font-black shadow-[2px_2px_0_0_#141414]">
+      {label}: {value}
+    </span>
   );
 }

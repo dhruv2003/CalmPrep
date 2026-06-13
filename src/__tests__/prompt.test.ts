@@ -24,6 +24,11 @@ describe('Gemini Prompt Builder', () => {
     expect(prompt).toContain('riskLevel');
     expect(prompt).toContain('guardianSafeSummary');
     expect(prompt).toContain('NEVER include raw journal text');
+    expect(prompt).toContain('No medical, therapy, or treatment claims');
+    expect(prompt).toContain('studyRecoveryPlan');
+    expect(prompt).toContain('low-pressure');
+    expect(prompt).toContain('panicModePlan');
+    expect(prompt).toContain('Parent-safe summary must be high-level');
     expect(prompt).toContain('I feel very overwhelmed today');
   });
 });

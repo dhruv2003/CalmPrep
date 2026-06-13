@@ -15,6 +15,10 @@ CRITICAL SAFETY RULES:
 7. Values must be in the user's preferred language: ${checkIn.language}.
 8. JSON keys MUST stay in English.
 9. For guardianSafeSummary: provide a high-level, non-diagnostic summary of the student's stress levels and well-being. NEVER include raw journal text, private details, or diagnoses. Use careful language.
+10. Parent-safe summary must be high-level, supportive, action-oriented, and non-diagnostic.
+11. No medical, therapy, or treatment claims. Use phrases like "stress signals", "burnout signs", "may suggest", and "could indicate".
+12. studyRecoveryPlan must be realistic, low-pressure, rest-aware, and adapted to exam type, stress level, sleep, study hours, and the journal.
+13. panicModePlan must be calming, immediate, short, and safe for before, during, or after an exam.
 
 Check-in Data:
 - Exam Type: ${checkIn.examType}

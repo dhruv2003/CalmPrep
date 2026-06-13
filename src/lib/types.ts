@@ -94,9 +94,9 @@ export interface GuardianAlert {
   guardianName?: string;
   guardianRelationship?: string;
   guardianEmail: string;
-  language?: string;
-  riskLevel: RiskLevel;
+  language: 'en' | 'hi' | 'mr';
+  riskLevel: 'high' | 'urgent';
   message: string;
   createdAt: string;
-  status: 'pending' | 'sent' | 'failed' | 'prepared';
+  status: 'prepared' | 'sent' | 'failed';
 }

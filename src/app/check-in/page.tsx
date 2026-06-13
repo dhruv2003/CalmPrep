@@ -10,28 +10,6 @@ import { saveCheckIn } from '@/lib/firebase/firestore';
 import { getMockWellnessResponse } from '@/lib/mock-wellness';
 import { EnergyLevel, ExamType, GeminiWellnessResponse, Mood } from '@/lib/types';
 import { getJournalPrompts } from '@/lib/journal-prompts';
-import { Mic, MicOff } from 'lucide-react';
-
-type SpeechRecognitionResultEvent = {
-  results: {
-    [index: number]: {
-      [index: number]: {
-        transcript: string;
-      };
-    };
-  };
-};
-
-type BrowserSpeechRecognition = {
-  lang: string;
-  interimResults: boolean;
-  onstart: (() => void) | null;
-  onend: (() => void) | null;
-  onresult: ((event: SpeechRecognitionResultEvent) => void) | null;
-  start: () => void;
-};
-
-type SpeechRecognitionConstructor = new () => BrowserSpeechRecognition;
 
 const examTypes: ExamType[] = ['Board Exams', 'NEET', 'JEE', 'CUET', 'CAT', 'GATE', 'UPSC', 'Other'];
 const moods: Mood[] = ['calm', 'okay', 'anxious', 'overwhelmed', 'low', 'confident'];
@@ -55,10 +33,6 @@ export default function CheckIn() {
   
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  
-  // Voice input state
-  const [isRecording, setIsRecording] = useState(false);
-
   const examTypeLabels: Record<ExamType, string> = {
     'Board Exams': t.examBoardExams,
     NEET: 'NEET',
@@ -101,32 +75,6 @@ export default function CheckIn() {
     }
 
     return issue.message;
-  };
-
-  const handleVoiceInput = () => {
-    const SpeechRecognition = (window as Window & { webkitSpeechRecognition?: SpeechRecognitionConstructor }).webkitSpeechRecognition;
-
-    if (!SpeechRecognition) {
-      alert(t.voiceUnavailable);
-      return;
-    }
-    
-    const recognition = new SpeechRecognition();
-    recognition.lang = language === 'en' ? 'en-US' : (language === 'hi' ? 'hi-IN' : 'mr-IN');
-    recognition.interimResults = false;
-    
-    recognition.onstart = () => setIsRecording(true);
-    recognition.onend = () => setIsRecording(false);
-    
-    recognition.onresult = (event) => {
-      const transcript = event.results[0][0].transcript;
-      setFormData(prev => ({ 
-        ...prev, 
-        journalText: prev.journalText ? prev.journalText + ' ' + transcript : transcript 
-      }));
-    };
-    
-    recognition.start();
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -303,19 +251,10 @@ export default function CheckIn() {
             </div>
 
             <div>
-              <div className="flex justify-between items-end mb-2">
-                <label htmlFor="journalText" className="block font-bold text-xl">{t.journalTitle}</label>
-                <button 
-                  type="button" 
-                  onClick={handleVoiceInput}
-                  className={`p-2 rounded-full border-2 border-border neo-hover ${isRecording ? 'bg-danger text-white' : 'bg-white'}`}
-                  aria-label={t.voiceInput}
-                >
-                  {isRecording ? <MicOff size={20} /> : <Mic size={20} />}
-                </button>
-              </div>
+              <label htmlFor="journalText" className="block font-bold text-xl mb-2">{t.journalTitle}</label>
               
               <div className="mb-4 flex flex-wrap gap-2">
+                <h2 className="w-full text-lg font-black">{t.microJournalPromptsTitle}</h2>
                 {getJournalPrompts(language, formData.mood as Mood, formData.examType as ExamType).map((prompt, idx) => (
                   <button
                     key={idx}

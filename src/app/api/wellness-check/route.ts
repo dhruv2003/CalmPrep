@@ -100,8 +100,10 @@ export async function POST(req: Request) {
     const validated = wellnessResponseSchema.safeParse(rawResponse);
     if (!validated.success) {
       console.error('AI response validation failed:', validated.error.issues);
-      // Return partial data with defaults rather than failing completely
-      return NextResponse.json(rawResponse);
+      return NextResponse.json(
+        { error: 'AI response failed validation. Please try again later.' },
+        { status: 502 }
+      );
     }
 
     return NextResponse.json(validated.data);
