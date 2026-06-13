@@ -24,9 +24,15 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
+        <a
+          href="#main-content"
+          className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50 focus:bg-[#7c5cff] focus:text-white focus:px-4 focus:py-2 focus:rounded focus:font-bold focus:border-2 focus:border-[#141414]"
+        >
+          Skip to main content
+        </a>
         <LanguageProvider>
           <AuthProvider>
-            <div className="min-h-screen flex flex-col">
+            <div id="main-content" className="min-h-screen flex flex-col">
               {children}
             </div>
           </AuthProvider>

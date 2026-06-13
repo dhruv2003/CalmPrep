@@ -58,6 +58,50 @@ export default function CheckIn() {
   // Voice input state
   const [isRecording, setIsRecording] = useState(false);
 
+  const examTypeLabels: Record<ExamType, string> = {
+    'Board Exams': t.examBoardExams,
+    NEET: 'NEET',
+    JEE: 'JEE',
+    CUET: 'CUET',
+    CAT: 'CAT',
+    GATE: 'GATE',
+    UPSC: 'UPSC',
+    Other: t.examOther,
+  };
+
+  const moodLabels: Record<Mood, string> = {
+    calm: t.moodCalm,
+    okay: t.moodOkay,
+    anxious: t.moodAnxious,
+    overwhelmed: t.moodOverwhelmed,
+    low: t.moodLow,
+    confident: t.moodConfident,
+  };
+
+  const energyLevelLabels: Record<EnergyLevel, string> = {
+    low: t.energyLow,
+    medium: t.energyMedium,
+    high: t.energyHigh,
+  };
+
+  const getValidationMessage = (issue: { path: PropertyKey[]; code: string; message: string }) => {
+    const field = issue.path[0];
+
+    if (field === 'biggestPressure') {
+      return t.validationBiggestPressureRequired;
+    }
+
+    if (field === 'journalText' && issue.code === 'too_small') {
+      return t.validationJournalTooShort;
+    }
+
+    if (field === 'journalText' && issue.code === 'too_big') {
+      return t.validationJournalTooLong;
+    }
+
+    return issue.message;
+  };
+
   const handleVoiceInput = () => {
     const SpeechRecognition = (window as Window & { webkitSpeechRecognition?: SpeechRecognitionConstructor }).webkitSpeechRecognition;
 
@@ -93,7 +137,7 @@ export default function CheckIn() {
     const validated = checkInSchema.safeParse(fullData);
 
     if (!validated.success) {
-      setError(validated.error.issues[0].message);
+      setError(getValidationMessage(validated.error.issues[0]));
       setLoading(false);
       return;
     }
@@ -142,7 +186,7 @@ export default function CheckIn() {
 
       router.push('/report');
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Something went wrong');
+      setError(err instanceof Error ? err.message : t.somethingWentWrong);
       setLoading(false);
     }
   };
@@ -155,46 +199,49 @@ export default function CheckIn() {
         <p className="text-xl font-bold mb-8 opacity-80">{t.journalTitle}</p>
 
         {error && (
-          <div className="bg-danger text-white p-4 font-bold rounded neo-border neo-shadow-sm mb-6">
+          <div role="alert" aria-live="assertive" className="bg-danger text-white p-4 font-bold rounded neo-border neo-shadow-sm mb-6">
             {error}
           </div>
         )}
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-8">
-          {/* Quick Stats Card */}
+          {/* Stats form card */}
           <div className="neo-card bg-calm-blue flex flex-col gap-6">
-            <h2 className="text-2xl font-black">Quick Stats</h2>
+            <h2 className="text-2xl font-black">{t.quickStats}</h2>
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block font-bold mb-2">{t.examType}</label>
+                <label htmlFor="examType" className="block font-bold mb-2">{t.examType}</label>
                 <select 
+                  id="examType"
                   className="neo-input"
                   value={formData.examType}
                   onChange={e => setFormData({...formData, examType: e.target.value as ExamType})}
                 >
                   {examTypes.map(opt => (
-                    <option key={opt} value={opt}>{opt}</option>
+                    <option key={opt} value={opt}>{examTypeLabels[opt]}</option>
                   ))}
                 </select>
               </div>
 
               <div>
-                <label className="block font-bold mb-2">{t.mood}</label>
+                <label htmlFor="mood" className="block font-bold mb-2">{t.mood}</label>
                 <select 
+                  id="mood"
                   className="neo-input"
                   value={formData.mood}
                   onChange={e => setFormData({...formData, mood: e.target.value as Mood})}
                 >
                   {moods.map(opt => (
-                    <option key={opt} value={opt}>{opt.charAt(0).toUpperCase() + opt.slice(1)}</option>
+                    <option key={opt} value={opt}>{moodLabels[opt]}</option>
                   ))}
                 </select>
               </div>
 
               <div>
-                <label className="block font-bold mb-2">{t.stressLevel}: {formData.stressLevel}</label>
+                <label htmlFor="stressLevel" className="block font-bold mb-2">{t.stressLevel}: {formData.stressLevel}</label>
                 <input 
+                  id="stressLevel"
                   type="range" min="1" max="10" 
                   className="w-full accent-primary"
                   value={formData.stressLevel}
@@ -203,21 +250,23 @@ export default function CheckIn() {
               </div>
 
               <div>
-                <label className="block font-bold mb-2">{t.energyLevel}</label>
+                <label htmlFor="energyLevel" className="block font-bold mb-2">{t.energyLevel}</label>
                 <select 
+                  id="energyLevel"
                   className="neo-input"
                   value={formData.energyLevel}
                   onChange={e => setFormData({...formData, energyLevel: e.target.value as EnergyLevel})}
                 >
                   {energyLevels.map(opt => (
-                    <option key={opt} value={opt}>{opt.charAt(0).toUpperCase() + opt.slice(1)}</option>
+                    <option key={opt} value={opt}>{energyLevelLabels[opt]}</option>
                   ))}
                 </select>
               </div>
 
               <div>
-                <label className="block font-bold mb-2">{t.sleepHours}</label>
+                <label htmlFor="sleepHours" className="block font-bold mb-2">{t.sleepHours}</label>
                 <input 
+                  id="sleepHours"
                   type="number" min="0" max="24"
                   className="neo-input"
                   value={formData.sleepHours}
@@ -226,8 +275,9 @@ export default function CheckIn() {
               </div>
 
               <div>
-                <label className="block font-bold mb-2">{t.studyHours}</label>
+                <label htmlFor="studyHours" className="block font-bold mb-2">{t.studyHours}</label>
                 <input 
+                  id="studyHours"
                   type="number" min="0" max="24"
                   className="neo-input"
                   value={formData.studyHours}
@@ -240,11 +290,12 @@ export default function CheckIn() {
           {/* Journal Card */}
           <div className="neo-card bg-accent flex flex-col gap-6">
             <div>
-              <label className="block font-bold text-xl mb-2">{t.biggestPressure}</label>
+              <label htmlFor="biggestPressure" className="block font-bold text-xl mb-2">{t.biggestPressure}</label>
               <input 
+                id="biggestPressure"
                 type="text"
                 className="neo-input text-lg"
-                placeholder="E.g., mock test scores, parental expectations..."
+                placeholder={t.biggestPressurePlaceholder}
                 value={formData.biggestPressure}
                 onChange={e => setFormData({...formData, biggestPressure: e.target.value})}
               />
@@ -252,17 +303,18 @@ export default function CheckIn() {
 
             <div>
               <div className="flex justify-between items-end mb-2">
-                <label className="block font-bold text-xl">{t.journalTitle}</label>
+                <label htmlFor="journalText" className="block font-bold text-xl">{t.journalTitle}</label>
                 <button 
                   type="button" 
                   onClick={handleVoiceInput}
                   className={`p-2 rounded-full border-2 border-border neo-hover ${isRecording ? 'bg-danger text-white' : 'bg-white'}`}
-                  aria-label="Voice Input"
+                  aria-label={t.voiceInput}
                 >
                   {isRecording ? <MicOff size={20} /> : <Mic size={20} />}
                 </button>
               </div>
               <textarea 
+                id="journalText"
                 className="neo-input h-48 text-lg resize-none"
                 placeholder={t.journalPlaceholder}
                 value={formData.journalText}
@@ -277,7 +329,7 @@ export default function CheckIn() {
             className="neo-btn-primary text-xl py-4 flex items-center justify-center gap-2"
           >
             {loading ? (
-              <span className="animate-pulse">Analyzing...</span>
+              <span className="animate-pulse">{t.analyzing}</span>
             ) : (
               <>✨ {t.analyzeBtn}</>
             )}

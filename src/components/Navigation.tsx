@@ -89,7 +89,7 @@ export const Navigation = () => {
                 className="flex items-center gap-2 font-black px-3 py-2 border-2 border-[#141414] rounded-lg bg-[#b8f7d4] shadow-[2px_2px_0_0_#141414] hover:bg-[#ffe66d] transition-colors"
               >
                 <ClipboardCheck size={18} />
-                <span>Check-in</span>
+                <span>{t.checkInNav}</span>
               </Link>
               <Link
                 href="/profile"
@@ -111,10 +111,10 @@ export const Navigation = () => {
             <button 
               onClick={handleSignOut}
               className="flex items-center gap-2 font-bold px-3 py-2 border-2 border-border rounded bg-danger text-white neo-hover"
-              aria-label="Sign out"
+              aria-label={t.signOut}
             >
               <LogOut size={18} />
-              <span className="hidden sm:inline">Logout</span>
+              <span className="hidden sm:inline">{t.logout}</span>
             </button>
           )}
         </div>
@@ -127,9 +127,9 @@ export const Navigation = () => {
       </div>
 
       {showAppLinks && (
-        <div aria-label="Primary mobile navigation" className="mt-3 grid grid-cols-3 gap-2 md:hidden">
-          <MobileNavLink href="/" label="Home" icon={Home} active={pathname === '/'} />
-          <MobileNavLink href="/check-in" label="Check-in" icon={ClipboardCheck} active={pathname === '/check-in'} />
+        <div aria-label={t.primaryMobileNavigation} className="mt-3 grid grid-cols-3 gap-2 md:hidden">
+          <MobileNavLink href="/" label={t.home} icon={Home} active={pathname === '/'} />
+          <MobileNavLink href="/check-in" label={t.checkInNav} icon={ClipboardCheck} active={pathname === '/check-in'} />
           <MobileNavLink href="/profile" label={t.profile} icon={UserCircle} active={pathname === '/profile'} />
         </div>
       )}

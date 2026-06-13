@@ -5,9 +5,11 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/components/AuthProvider';
 import { saveUserProfile } from '@/lib/firebase/firestore';
 import { Navigation } from '@/components/Navigation';
+import { useLanguage } from '@/components/LanguageProvider';
 
 export default function Onboarding() {
   const { user } = useAuth();
+  const { language, t } = useLanguage();
   const router = useRouter();
   const [guardianEmail, setGuardianEmail] = useState('');
   const [guardianConsentEnabled, setGuardianConsentEnabled] = useState(false);
@@ -20,11 +22,11 @@ export default function Onboarding() {
     setLoading(true);
     try {
       await saveUserProfile(user.uid, {
-        name: user.displayName || 'Student',
+        name: user.displayName || t.studentFallbackName,
         email: user.email || '',
         guardianEmail,
         guardianConsentEnabled,
-        preferredLanguage: 'en',
+        preferredLanguage: language,
       });
       router.push('/check-in');
     } catch (error) {
@@ -37,20 +39,19 @@ export default function Onboarding() {
     <>
       <Navigation />
       <main className="flex-1 max-w-2xl w-full mx-auto p-6 flex flex-col justify-center">
-        <h1 className="text-4xl font-black mb-6">Safety First 🛡️</h1>
+        <h1 className="text-4xl font-black mb-6">{t.onboardingTitle} 🛡️</h1>
         <p className="text-xl font-bold mb-8">
-          We want to make sure you are supported. You can optionally add a trusted guardian&apos;s email.
-          If our AI detects urgent signs of burnout or crisis, we can alert them to check on you.
+          {t.onboardingBody}
         </p>
 
         <form onSubmit={handleSubmit} className="neo-card flex flex-col gap-6">
           <div>
-            <label htmlFor="guardianEmail" className="block font-bold mb-2">Trusted Guardian Email (Optional)</label>
+            <label htmlFor="guardianEmail" className="block font-bold mb-2">{t.guardianEmailLabel}</label>
             <input 
               type="email" 
               id="guardianEmail"
               className="neo-input" 
-              placeholder="parent@example.com"
+              placeholder={t.guardianEmailPlaceholder}
               value={guardianEmail}
               onChange={(e) => setGuardianEmail(e.target.value)}
             />
@@ -63,7 +64,7 @@ export default function Onboarding() {
               checked={guardianConsentEnabled}
               onChange={(e) => setGuardianConsentEnabled(e.target.checked)}
             />
-            <span className="font-bold">I consent to sending safety alerts to this email if I show signs of severe crisis.</span>
+            <span className="font-bold">{t.guardianConsentLabel}</span>
           </label>
 
           <button 
@@ -71,7 +72,7 @@ export default function Onboarding() {
             disabled={loading}
             className="neo-btn-primary mt-4 disabled:opacity-50"
           >
-            {loading ? 'Saving...' : 'Continue to Check-in'}
+            {loading ? t.saving : t.continueToCheckIn}
           </button>
         </form>
       </main>
