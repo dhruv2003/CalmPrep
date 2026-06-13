@@ -1,17 +1,21 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/components/AuthProvider';
 import { useLanguage } from '@/components/LanguageProvider';
 import { Navigation } from '@/components/Navigation';
 import { CheckIn, UserProfile } from '@/lib/types';
-import { getCheckIns } from '@/lib/firebase/firestore';
+import { createGuardianAlert, getCheckIns, getUserProfile } from '@/lib/firebase/firestore';
 import { ShieldAlert, Lightbulb, TrendingUp, Download, Sparkles, BookOpen, AlertCircle, HeartPulse, Shield as ShieldIcon } from 'lucide-react';
 import { AlertTriangle, Activity, BrainCircuit, ChevronDown, ChevronUp } from 'lucide-react';
 import { calculateBurnoutRadar, BurnoutRadar } from '@/lib/burnout';
-import { createGuardianAlert, getUserProfile } from '@/lib/firebase/firestore';
-import { buildGuardianAlert, isValidGuardianEmail } from '@/lib/guardian-alerts';
+import {
+  buildGuardianAlert,
+  canAutoSendGuardianAlert,
+  getGuardianAlertIdempotencyKey,
+} from '@/lib/guardian-alerts';
+import { tryCreateGuardianAlertAudit } from '@/lib/guardian-alert-audit';
 
 function getDemoCheckInHistory(latest: CheckIn): CheckIn[] {
   return [
@@ -44,7 +48,9 @@ export default function Report() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [isPanicModeOpen, setIsPanicModeOpen] = useState(false);
   const [guardianStatus, setGuardianStatus] = useState<string | null>(null);
+  const [guardianDeliveryState, setGuardianDeliveryState] = useState<'idle' | 'sending' | 'sent' | 'failed'>('idle');
   const [loading, setLoading] = useState(true);
+  const autoGuardianAlertKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
     const fetchLatestCheckIn = async () => {
@@ -72,29 +78,79 @@ export default function Report() {
     fetchLatestCheckIn();
   }, [user, isDemoMode]);
 
-  const handleNotifyGuardian = async () => {
-    if (!checkIn) return;
+  const sendGuardianAlert = useCallback(async (automatic = false) => {
+    if (!checkIn) return false;
+
+    let alert: ReturnType<typeof buildGuardianAlert> | null = null;
 
     try {
       if (isDemoMode) {
-        setGuardianStatus(t.guardianPreparedStatus);
-        return;
+        setGuardianDeliveryState('sent');
+        setGuardianStatus(t.guardianEmailSentStatus);
+        return true;
       }
 
-      if (!user || !profile) return;
+      if (!user || !profile) return false;
 
-      const alert = buildGuardianAlert({
+      alert = buildGuardianAlert({
         userId: user.uid,
         profile,
         checkIn,
       });
 
-      await createGuardianAlert(alert);
-      setGuardianStatus(t.guardianPreparedStatus);
+      const response = await fetch('/api/guardian-alert', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          alert,
+          idempotencyKey: getGuardianAlertIdempotencyKey(user.uid, checkIn),
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Guardian email delivery failed.');
+      }
+
+      await tryCreateGuardianAlertAudit(createGuardianAlert, { ...alert, status: 'sent' });
+      setGuardianDeliveryState('sent');
+      setGuardianStatus(t.guardianEmailSentStatus);
+      return true;
     } catch (e) {
       console.error(e);
-      setGuardianStatus(t.guardianUnavailableLabel);
+      if (alert && !automatic) {
+        await tryCreateGuardianAlertAudit(createGuardianAlert, { ...alert, status: 'failed' });
+      }
+      setGuardianDeliveryState('failed');
+      setGuardianStatus(t.guardianEmailFailedStatus);
+      return false;
     }
+  }, [checkIn, isDemoMode, profile, t.guardianEmailFailedStatus, t.guardianEmailSentStatus, user]);
+
+  useEffect(() => {
+    if (isDemoMode || !user || !profile || !checkIn || !canAutoSendGuardianAlert(profile, checkIn)) return;
+
+    const idempotencyKey = getGuardianAlertIdempotencyKey(user.uid, checkIn);
+    const storageKey = `calmprep:${idempotencyKey}`;
+
+    if (autoGuardianAlertKeyRef.current === idempotencyKey || localStorage.getItem(storageKey) === 'sent') return;
+
+    autoGuardianAlertKeyRef.current = idempotencyKey;
+    setGuardianDeliveryState('sending');
+    setGuardianStatus(t.guardianAutoEmailNotice);
+
+    sendGuardianAlert(true)
+      .then((sent) => {
+        if (sent) {
+          localStorage.setItem(storageKey, 'sent');
+        }
+      })
+      .catch(() => undefined);
+  }, [checkIn, isDemoMode, profile, sendGuardianAlert, t.guardianAutoEmailNotice, user]);
+
+  const handleNotifyGuardian = () => {
+    setGuardianDeliveryState('sending');
+    setGuardianStatus(null);
+    void sendGuardianAlert(false);
   };
 
   if (loading) return <div className="p-8 text-xl font-bold flex justify-center items-center h-screen">{t.loadingInsights}</div>;
@@ -112,9 +168,15 @@ export default function Report() {
   }
 
   const res = checkIn.result;
-  const hasGuardianConsent = Boolean(profile?.guardianConsentEnabled && isValidGuardianEmail(profile.guardianEmail));
   const isHighRisk = res.riskLevel === 'high' || res.riskLevel === 'urgent';
-  const canNotifyGuardian = isDemoMode ? isHighRisk : isHighRisk && hasGuardianConsent;
+  const canNotifyGuardian = isDemoMode ? isHighRisk : canAutoSendGuardianAlert(profile, checkIn);
+  const guardianButtonDisabled = guardianDeliveryState === 'sending' || guardianDeliveryState === 'sent';
+  const guardianButtonLabel =
+    guardianDeliveryState === 'sent'
+      ? t.guardianNotifiedLabel
+      : guardianDeliveryState === 'sending'
+        ? t.guardianSendingLabel
+        : t.notifyGuardian;
 
   return (
     <div className="min-h-screen flex flex-col bg-[#f6f1ff]">
@@ -141,13 +203,13 @@ export default function Report() {
             <p className="text-xl font-bold mb-4">{t.crisisCardText}</p>
             {res.guardianAlertRecommended && canNotifyGuardian && (
               <div className="bg-white text-[#141414] p-4 font-bold border-4 border-[#141414] rounded-lg flex flex-col sm:flex-row justify-between items-center gap-4">
-                <span>{guardianStatus || t.guardianAlertPrepared}</span>
+                <span>{guardianStatus || t.guardianAutoEmailNotice}</span>
                 <button 
                   onClick={handleNotifyGuardian}
-                  disabled={Boolean(guardianStatus)}
+                  disabled={guardianButtonDisabled}
                   className="px-6 py-3 bg-[#ffb703] border-4 border-[#141414] font-black rounded-lg shadow-[4px_4px_0_0_#141414] whitespace-nowrap disabled:opacity-50"
                 >
-                  {guardianStatus ? t.guardianNotifiedLabel : t.notifyGuardian}
+                  {guardianButtonLabel}
                 </button>
               </div>
             )}
@@ -329,10 +391,10 @@ export default function Report() {
                   <button
                     type="button"
                     onClick={handleNotifyGuardian}
-                    disabled={Boolean(guardianStatus)}
+                    disabled={guardianButtonDisabled}
                     className="col-span-1 md:col-span-3 rounded-lg border-4 border-[#141414] bg-white px-5 py-3 font-black text-[#141414] shadow-[4px_4px_0_0_#141414] transition-all hover:bg-[#b8f7d4] disabled:opacity-60"
                   >
-                    {guardianStatus ? t.guardianNotifiedLabel : t.notifyGuardian}
+                    {guardianButtonLabel}
                   </button>
                 )}
               </div>
@@ -386,10 +448,10 @@ export default function Report() {
                 {canNotifyGuardian && (
                   <button 
                     onClick={handleNotifyGuardian}
-                    disabled={Boolean(guardianStatus)}
+                    disabled={guardianButtonDisabled}
                     className="w-full py-2 bg-white border-4 border-[#141414] rounded-lg font-black shadow-[2px_2px_0_0_#141414] hover:bg-[#b8f7d4] hover:translate-y-[1px] hover:shadow-[1px_1px_0_0_#141414] transition-all disabled:opacity-50 text-[#141414] text-sm"
                   >
-                    {guardianStatus ? t.guardianNotifiedLabel : t.notifyGuardian}
+                    {guardianButtonLabel}
                   </button>
                 )}
                 {guardianStatus && <p className="font-bold text-sm">{guardianStatus}</p>}

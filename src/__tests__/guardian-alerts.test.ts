@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { buildGuardianAlert, isValidGuardianEmail } from '@/lib/guardian-alerts';
+import {
+  buildGuardianAlert,
+  canAutoSendGuardianAlert,
+  getGuardianAlertIdempotencyKey,
+  isValidGuardianEmail,
+} from '@/lib/guardian-alerts';
 import { CheckIn, UserProfile } from '@/lib/types';
 
 const profile: UserProfile = {
@@ -107,5 +112,33 @@ describe('guardian alert helpers', () => {
         explicitSupportRequest: true,
       }).status
     ).toBe('prepared');
+  });
+
+  it('auto-sends only for consented high or urgent results with a valid guardian email', () => {
+    expect(canAutoSendGuardianAlert(profile, highRiskCheckIn)).toBe(true);
+    expect(
+      canAutoSendGuardianAlert(
+        { ...profile, guardianConsentEnabled: false },
+        highRiskCheckIn
+      )
+    ).toBe(false);
+    expect(
+      canAutoSendGuardianAlert(
+        profile,
+        { ...highRiskCheckIn, riskLevel: 'moderate', result: { ...highRiskCheckIn.result!, riskLevel: 'moderate' } }
+      )
+    ).toBe(false);
+    expect(
+      canAutoSendGuardianAlert(
+        { ...profile, guardianEmail: 'bad-email' },
+        highRiskCheckIn
+      )
+    ).toBe(false);
+  });
+
+  it('creates a stable idempotency key for one alert per check-in', () => {
+    expect(getGuardianAlertIdempotencyKey('user-1', highRiskCheckIn)).toBe(
+      'guardian-alert-user-1-2026-06-13T00-00-00.000Z-high'
+    );
   });
 });
