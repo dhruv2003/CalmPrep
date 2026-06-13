@@ -152,6 +152,7 @@ export default function Home() {
                   alt="Friendly floating cloud companion"
                   fill
                   unoptimized
+                  priority
                   className="object-cover"
                   sizes="(max-width: 1024px) 90vw, 42vw"
                 />

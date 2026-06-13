@@ -7,6 +7,8 @@ import { Language } from '@/lib/i18n';
 import Link from 'next/link';
 import { ClipboardCheck, LogOut, UserCircle } from 'lucide-react';
 
+import { useRouter } from 'next/navigation';
+
 function LangButton({
   lang,
   label,
@@ -35,11 +37,13 @@ function LangButton({
 export const Navigation = () => {
   const { user, isDemoMode } = useAuth();
   const { language, setLanguage, t } = useLanguage();
+  const router = useRouter();
 
   const handleSignOut = async () => {
     if (!isDemoMode) {
       await signOut();
     }
+    router.push('/');
   };
 
   const showAppLinks = Boolean(user || isDemoMode);
